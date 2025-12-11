@@ -21,7 +21,92 @@ const DEFAULT_MATRIX: Matrix = [
   [0, 0, 1],
 ]
 
+export function matClone(A: Matrix): Matrix {
+  return A.map(row => [...row]);
+}
+
+export function identity3(): Matrix {
+  return [
+    [1,0,0],
+    [0,1,0],
+    [0,0,1],
+  ];
+}
+
+export function matTranspose(A: Matrix): Matrix {
+  return [
+    [A[0][0], A[1][0], A[2][0]],
+    [A[0][1], A[1][1], A[2][1]],
+    [A[0][2], A[1][2], A[2][2]],
+  ];
+}
+
+export function matAdd(A: Matrix, B: Matrix): Matrix {
+  const C: Matrix = [
+    [0,0,0],
+    [0,0,0],
+    [0,0,0],
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 3; j++) {
+      C[i][j] = A[i][j] + B[i][j];
+    }
+  }
+  return C;
+}
+
+export function matScale(A: Matrix, s: number): Matrix {
+  const C: Matrix = [
+    [0,0,0],
+    [0,0,0],
+    [0,0,0],
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 0 + 3; j++) {
+      C[i][j] = A[i][j] * s;
+    }
+  }
+  return C;
+}
+
+export function matMul(A: Matrix, B: Matrix): Matrix {
+  const C: Matrix = [
+    [0,0,0],
+    [0,0,0],
+    [0,0,0],
+  ];
+
+  for (let i = 0; i < 3; i++) {      // rows of A
+    for (let j = 0; j < 3; j++) {    // columns of B
+      C[i][j] =
+        A[i][0] * B[0][j] +
+        A[i][1] * B[1][j] +
+        A[i][2] * B[2][j];
+    }
+  }
+
+  return C;
+}
+
+export function frobeniusNorm(A: Matrix): number {
+  let sum = 0;
+  for (let i = 0; i < 3; i++)
+    for (let j = 0; j < 3; j++)
+      sum += A[i][j] * A[i][j];
+  return Math.sqrt(sum);
+}
+
+export function XXt(X: Matrix): Matrix {
+  return matMul(X, matTranspose(X));
+}
+
 const DEGREE_CHOICES = [3, 5] as const
+const DEGREE_DEFAULTS: Record<(typeof DEGREE_CHOICES)[number], number[]> = {
+  3: [3/2, -1/2],
+  5: [3.4445, -4.775, 2.0315],
+}
 
 export default function Home() {
   const [matrix, setMatrix] = useState<Matrix>(() => cloneMatrix(DEFAULT_MATRIX))
@@ -30,7 +115,8 @@ export default function Home() {
   const [normalize, setNormalize] = useState(false)
   const coefficientCount = useMemo(() => (degree + 1) / 2, [degree])
   const coefficientGridClass = coefficientCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"
-  const [coefficients, setCoefficients] = useState<number[]>(() => Array((3 + 1) / 2).fill(1))
+  const [coefficients, setCoefficients] = useState<number[]>(() => [...DEGREE_DEFAULTS[3]])
+  const [defaultText, setDefaultText] = useState(() => DEGREE_DEFAULTS[3].join(", "))
 
   const handleMatrixChange = (row: number, column: number, value: string) => {
     const numericValue = Number(value)
@@ -44,10 +130,9 @@ export default function Home() {
   const handleDegreeChange = (nextDegree: (typeof DEGREE_CHOICES)[number]) => {
     setDegree(nextDegree)
     const nextCount = (nextDegree + 1) / 2
-    setCoefficients((previous) => {
-      const next = Array(nextCount).fill(1)
-      return next.map((_, index) => previous[index] ?? 1)
-    })
+    const defaults = DEGREE_DEFAULTS[nextDegree] ?? Array(nextCount).fill(1)
+    setCoefficients(defaults.slice(0, nextCount))
+    setDefaultText(defaults.join(", "))
   }
 
   const handleCoefficientChange = (index: number, value: string) => {
@@ -131,7 +216,6 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-
               <div className={`grid gap-3 ${coefficientGridClass}`}>
                 {Array.from({ length: coefficientCount }).map((_, index) => (
                   <div key={index} className="space-y-1">
@@ -206,4 +290,15 @@ export default function Home() {
 
 function cloneMatrix(matrix: Matrix): Matrix {
   return matrix.map((row) => [...row])
+}
+
+function parseDefaultText(text: string, count: number) {
+  const entries = text
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((_, index) => index < count)
+  while (entries.length < count) {
+    entries.push(1)
+  }
+  return entries.map((value) => (Number.isFinite(value) ? value : 0))
 }
