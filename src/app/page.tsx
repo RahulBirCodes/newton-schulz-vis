@@ -257,15 +257,14 @@ export default function Home() {
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4">
         <header className="space-y-3 text-center">
           <p className="text-xs font-semibold uppercase tracking-[0.35em] text-zinc-400">
-            Newton–Schulz Inputs
+            Rahul Bir - eecs182
           </p>
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-900">
-            Iteration setup
+            Newton-Schulz Muon Iteration Visualization
           </h1>
           <p className="mx-auto max-w-2xl text-sm leading-relaxed text-zinc-500">
-            Mirror the clean control stack from the SVD tool: define your 3×3 matrix, select an odd-degree
-            polynomial, and lock in the iteration count. Nothing runs automatically; this page simply
-            captures the numbers with a tidy layout.
+            Visualize how the singular values of a 3x3 evolve as you apply an odd polynomial to it.
+            Try with different coefficients and see the trajectory of the singular values on a 3d plot!
           </p>
         </header>
 
@@ -323,30 +322,6 @@ export default function Home() {
                     Degree {choice}
                   </button>
                 ))}
-              </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                <div className="flex-1 space-y-1">
-                  <Label className="text-sm font-medium text-zinc-500">
-                    Defaults (comma-separated)
-                  </Label>
-                  <Input
-                    value={defaultText}
-                    onChange={(event) => setDefaultText(event.target.value)}
-                    placeholder="1, 0.5, 0.25"
-                    className="h-11 rounded-lg border-zinc-200 bg-white text-sm text-zinc-900"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  className="h-11 rounded-lg px-5 text-sm font-semibold"
-                  onClick={() => {
-                    const parsed = parseDefaultText(defaultText, coefficientCount)
-                    setCoefficients(parsed)
-                    setDefaultText(parsed.join(", "))
-                  }}
-                >
-                  Apply defaults
-                </Button>
               </div>
               <div className={`grid gap-3 ${coefficientGridClass}`}>
                 {Array.from({ length: coefficientCount }).map((_, index) => (
@@ -599,30 +574,10 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
   const cameraPosition: [number, number, number] = [2.7, 2.4, 3.1]
   const cameraTarget: [number, number, number] = [0, 0, 0]
 
-  const resetView = () => {
-    if (primaryControlsRef.current) {
-      primaryControlsRef.current.reset()
-      primaryControlsRef.current.target.set(...cameraTarget)
-      primaryControlsRef.current.update()
-    }
-    if (modalControlsRef.current) {
-      modalControlsRef.current.reset()
-      modalControlsRef.current.target.set(...cameraTarget)
-      modalControlsRef.current.update()
-    }
-  }
-
   return (
     <>
       <div className="relative h-[600px] overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-50">
         <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-5 py-4 text-[12px] font-semibold uppercase tracking-[0.3em] text-zinc-500">
-          <button
-            type="button"
-            className="pointer-events-auto rounded-full bg-white/90 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500 shadow-sm transition hover:text-zinc-900"
-            onClick={resetView}
-          >
-            Reset view
-          </button>
           <button
             type="button"
             className="pointer-events-auto rounded-full bg-white/90 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500 shadow-sm transition hover:text-zinc-900"
@@ -637,6 +592,7 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
             points={scaledPoints}
             target={targetScaled}
             lookTarget={cameraTarget}
+            enablePan
           />
         </Canvas>
       </div>
@@ -657,9 +613,6 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
                 </CardDescription>
               </div>
               <div className="flex gap-3">
-                <Button variant="ghost" onClick={resetView}>
-                  Reset view
-                </Button>
                 <Button onClick={() => setExpanded(false)}>Close</Button>
               </div>
             </CardHeader>
@@ -671,6 +624,7 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
                     points={scaledPoints}
                     target={targetScaled}
                     lookTarget={cameraTarget}
+                    enablePan
                   />
                 </Canvas>
               </div>
@@ -688,11 +642,13 @@ function SingularValueScene({
   points,
   target,
   lookTarget,
+  enablePan = false,
 }: {
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
   points: TrajectoryPoint[]
   target: [number, number, number]
   lookTarget: [number, number, number]
+  enablePan?: boolean
 }) {
   return (
     <>
@@ -721,7 +677,14 @@ function SingularValueScene({
         <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.6} />
       </mesh>
       <axesHelper args={[1.5]} />
-      <OrbitControls ref={controlsRef} target={lookTarget} enableDamping dampingFactor={0.1} />
+      <OrbitControls
+        ref={controlsRef}
+        target={lookTarget}
+        enableDamping
+        dampingFactor={0.1}
+        enablePan={enablePan}
+        panSpeed={0.6}
+      />
     </>
   )
 }
