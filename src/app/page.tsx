@@ -102,6 +102,45 @@ export function XXt(X: Matrix): Matrix {
   return matMul(X, matTranspose(X));
 }
 
+export function create_polynomial(degree: 3 | 5, coeffs: number[]) {
+  // coeffs = [a0, a1] for degree 3
+  // coeffs = [a0, a1, a2] for degree 5
+
+  return function applyPolynomial(X: Matrix): Matrix {
+    const G = XXt(X);       // XXᵀ
+    const GX = matMul(G, X); // (XXᵀ)X
+
+    if (degree === 3) {
+      const a0 = coeffs[0];
+      const a1 = coeffs[1];
+
+      // p(X) = a0 X + a1 (XXᵀ)X
+      const term0 = matScale(X,  a0);
+      const term1 = matScale(GX, a1);
+
+      return matAdd(term0, term1);
+    }
+
+    if (degree === 5) {
+      const a0 = coeffs[0];
+      const a1 = coeffs[1];
+      const a2 = coeffs[2];
+
+      // compute (XXᵀ)^2 X
+      const G2X = matMul(G, GX); // (XXᵀ)(XXᵀ X) = (XXᵀ)² X
+
+      // p(X) = a0 X + a1 (XXᵀ)X + a2 (XXᵀ)²X
+      const term0 = matScale(X,   a0);
+      const term1 = matScale(GX,  a1);
+      const term2 = matScale(G2X, a2);
+
+      return matAdd(matAdd(term0, term1), term2);
+    }
+
+    throw new Error("lock in") 
+  };
+}
+
 const DEGREE_CHOICES = [3, 5] as const
 const DEGREE_DEFAULTS: Record<(typeof DEGREE_CHOICES)[number], number[]> = {
   3: [3/2, -1/2],
