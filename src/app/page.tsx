@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { SVD } from "svd-js"
+import { Canvas } from "@react-three/fiber"
+import { OrbitControls, Line } from "@react-three/drei"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -466,6 +468,22 @@ export default function Home() {
             </CardContent>
           </Card>
         )}
+
+        {snapshots.length > 0 && (
+          <Card className="border border-zinc-200/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-zinc-900 tracking-tight">
+                Singular value path
+              </CardTitle>
+              <CardDescription className="text-sm text-zinc-500">
+                Explore how (σ₁, σ₂, σ₃) evolve across iterations in 3D space. Drag to orbit, scroll to zoom.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SingularValuePath3D snapshots={snapshots} />
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   )
@@ -533,4 +551,67 @@ function SingularValueDisplay({ values }: { values: number[] }) {
 function formatNumber(value: number) {
   if (!Number.isFinite(value)) return "NaN"
   return Number(value).toFixed(4)
+}
+
+function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
+  const points = useMemo(() => {
+    return snapshots
+      .filter((snapshot) => snapshot.singularValues.every((value) => Number.isFinite(value)))
+      .map((snapshot) => ({
+        step: snapshot.step,
+        vector: snapshot.singularValues as [number, number, number],
+      }))
+  }, [snapshots])
+
+  if (points.length === 0) {
+    return (
+      <p className="text-sm text-zinc-500">
+        Not enough valid singular values to display a trajectory.
+      </p>
+    )
+  }
+
+  const maxComponent = Math.max(
+    1,
+    ...points.flatMap((point) => point.vector.map((value) => Math.abs(value)))
+  )
+  const scale = 1.5 / maxComponent
+  const scaledPoints = points.map((point) => ({
+    ...point,
+    scaled: point.vector.map((value) => value * scale) as [number, number, number],
+  }))
+  const targetScaled = [1, 1, 1].map((value) => value * scale) as [number, number, number]
+
+  return (
+    <div className="h-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
+      <Canvas camera={{ position: [3, 3, 3], fov: 45 }}>
+        <color attach="background" args={["#f8fafc"]} />
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[4, 5, 3]} intensity={0.6} />
+        <gridHelper args={[10, 20, "#cbd5f5", "#e5e7eb"]} position={[0, -0.01, 0]} />
+        <Line
+          points={scaledPoints.map((point) => point.scaled)}
+          color="#2563eb"
+          lineWidth={2}
+        />
+        {scaledPoints.map((point) => (
+          <mesh key={point.step} position={point.scaled}>
+            <sphereGeometry
+              args={[point.step === scaledPoints.length - 1 ? 0.07 : 0.05, 24, 24]}
+            />
+            <meshStandardMaterial
+              color={point.step === scaledPoints.length - 1 ? "#f97316" : "#0ea5e9"}
+              emissive={point.step === scaledPoints.length - 1 ? "#f97316" : "#0ea5e9"}
+              emissiveIntensity={0.4}
+            />
+          </mesh>
+        ))}
+        <mesh position={targetScaled}>
+          <sphereGeometry args={[0.08, 24, 24]} />
+          <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.6} />
+        </mesh>
+        <OrbitControls />
+      </Canvas>
+    </div>
+  )
 }
