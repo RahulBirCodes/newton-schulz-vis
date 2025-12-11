@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react"
 import { SVD } from "svd-js"
 import { Canvas } from "@react-three/fiber"
-import { OrbitControls, Line } from "@react-three/drei"
+import { OrbitControls, Line, Html } from "@react-three/drei"
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { Button } from "@/components/ui/button"
 import {
@@ -596,39 +596,53 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
     )
   }
 
-  const cameraPosition: [number, number, number] = [2.2, 2, 2.2]
+  const cameraPosition: [number, number, number] = [2.7, 2.4, 3.1]
+  const cameraTarget: [number, number, number] = [0, 0, 0]
 
   const resetView = () => {
-    primaryControlsRef.current?.reset()
-    modalControlsRef.current?.reset()
+    if (primaryControlsRef.current) {
+      primaryControlsRef.current.reset()
+      primaryControlsRef.current.target.set(...cameraTarget)
+      primaryControlsRef.current.update()
+    }
+    if (modalControlsRef.current) {
+      modalControlsRef.current.reset()
+      modalControlsRef.current.target.set(...cameraTarget)
+      modalControlsRef.current.update()
+    }
   }
 
   return (
     <>
       <div className="relative h-[600px] overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-50">
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-500">
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-5 py-4 text-[12px] font-semibold uppercase tracking-[0.3em] text-zinc-500">
           <button
             type="button"
-            className="pointer-events-auto text-zinc-500 transition hover:text-zinc-900"
+            className="pointer-events-auto rounded-full bg-white/90 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500 shadow-sm transition hover:text-zinc-900"
             onClick={resetView}
           >
             Reset view
           </button>
           <button
             type="button"
-            className="pointer-events-auto text-zinc-500 transition hover:text-zinc-900"
+            className="pointer-events-auto rounded-full bg-white/90 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-zinc-500 shadow-sm transition hover:text-zinc-900"
             onClick={() => setExpanded(true)}
           >
             Expand
           </button>
         </div>
-        <Canvas camera={{ position: cameraPosition, fov: 40 }}>
+        <Canvas camera={{ position: cameraPosition, fov: 45 }}>
           <SingularValueScene
             controlsRef={primaryControlsRef}
             points={scaledPoints}
             target={targetScaled}
+            lookTarget={cameraTarget}
           />
         </Canvas>
+      </div>
+      <div className="mt-4 flex gap-6 text-sm font-medium text-zinc-600">
+        <LegendPill color="#0ea5e9" label="Trajectory point" />
+        <LegendPill color="#22c55e" label="Target (1,1,1)" />
       </div>
       {expanded && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-10">
@@ -656,6 +670,7 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
                     controlsRef={modalControlsRef}
                     points={scaledPoints}
                     target={targetScaled}
+                    lookTarget={cameraTarget}
                   />
                 </Canvas>
               </div>
@@ -672,10 +687,12 @@ function SingularValueScene({
   controlsRef,
   points,
   target,
+  lookTarget,
 }: {
   controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
   points: TrajectoryPoint[]
   target: [number, number, number]
+  lookTarget: [number, number, number]
 }) {
   return (
     <>
@@ -683,7 +700,7 @@ function SingularValueScene({
       <ambientLight intensity={0.8} />
       <directionalLight position={[4, 5, 3]} intensity={0.6} />
       <gridHelper args={[10, 20, "#cbd5f5", "#e5e7eb"]} position={[0, -0.01, 0]} />
-      <Line points={points.map((point) => point.scaled)} color="#2563eb" lineWidth={6} />
+      <Line points={points.map((point) => point.scaled)} color="#2563eb" lineWidth={8} />
       {points.map((point) => (
         <mesh key={point.step} position={point.scaled}>
           <sphereGeometry args={[point.step === points.length - 1 ? 0.12 : 0.1, 32, 32]} />
@@ -692,13 +709,28 @@ function SingularValueScene({
             emissive={point.step === points.length - 1 ? "#f97316" : "#0ea5e9"}
             emissiveIntensity={0.5}
           />
+          <Html center>
+            <span className="rounded-full bg-white/90 px-2 py-0.5 text-xs font-semibold text-zinc-600 shadow">
+              t{point.step}
+            </span>
+          </Html>
         </mesh>
       ))}
       <mesh position={target}>
         <sphereGeometry args={[0.15, 32, 32]} />
         <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.6} />
       </mesh>
-      <OrbitControls ref={controlsRef} />
+      <axesHelper args={[1.5]} />
+      <OrbitControls ref={controlsRef} target={lookTarget} enableDamping dampingFactor={0.1} />
     </>
+  )
+}
+
+function LegendPill({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-3 w-6 rounded-full" style={{ backgroundColor: color }} />
+      <span>{label}</span>
+    </div>
   )
 }
