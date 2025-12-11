@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-
+import { SVD } from "svd-js"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -143,19 +143,34 @@ export function create_polynomial(degree: 3 | 5, coeffs: number[]) {
 
 const DEGREE_CHOICES = [3, 5] as const
 const DEGREE_DEFAULTS: Record<(typeof DEGREE_CHOICES)[number], number[]> = {
-  3: [3/2, -1/2],
+  3: [3 / 2, -1 / 2],
   5: [3.4445, -4.775, 2.0315],
+}
+
+interface Snapshot {
+  step: number
+  matrix: Matrix
+  singularValues: number[]
+  hasNaN: boolean
 }
 
 export default function Home() {
   const [matrix, setMatrix] = useState<Matrix>(() => cloneMatrix(DEFAULT_MATRIX))
   const [degree, setDegree] = useState<typeof DEGREE_CHOICES[number]>(3)
   const [iterations, setIterations] = useState(6)
-  const [normalize, setNormalize] = useState(false)
+  const [normalize, setNormalize] = useState(true)
   const coefficientCount = useMemo(() => (degree + 1) / 2, [degree])
   const coefficientGridClass = coefficientCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"
   const [coefficients, setCoefficients] = useState<number[]>(() => [...DEGREE_DEFAULTS[3]])
   const [defaultText, setDefaultText] = useState(() => DEGREE_DEFAULTS[3].join(", "))
+  const polynomialFn = useMemo(
+    () => create_polynomial(degree, coefficients),
+    [degree, coefficients]
+  )
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([])
+  const [selectedStep, setSelectedStep] = useState(0)
+  const [nanStep, setNanStep] = useState<number | null>(null)
+  const [isRunning, setIsRunning] = useState(false)
 
   const handleMatrixChange = (row: number, column: number, value: string) => {
     const numericValue = Number(value)
@@ -170,8 +185,9 @@ export default function Home() {
     setDegree(nextDegree)
     const nextCount = (nextDegree + 1) / 2
     const defaults = DEGREE_DEFAULTS[nextDegree] ?? Array(nextCount).fill(1)
-    setCoefficients(defaults.slice(0, nextCount))
-    setDefaultText(defaults.join(", "))
+    const trimmed = defaults.slice(0, nextCount)
+    setDefaultText(trimmed.join(", "))
+    setCoefficients(trimmed)
   }
 
   const handleCoefficientChange = (index: number, value: string) => {
@@ -181,6 +197,56 @@ export default function Home() {
       next[index] = Number.isFinite(numericValue) ? numericValue : 0
       return next
     })
+  }
+
+  const handleRunIterations = () => {
+    if (!polynomialFn) return
+    setIsRunning(true)
+    try {
+      let current = cloneMatrix(matrix)
+      if (normalize) {
+        const norm = frobeniusNorm(current)
+        if (Number.isFinite(norm) && norm > 0) {
+          current = matScale(current, 1 / norm)
+        }
+      }
+
+      const results: Snapshot[] = []
+      const recordSnapshot = (input: Matrix, step: number) => {
+        const invalidValues = matrixHasNaN(input)
+        let hasNaN = invalidValues
+        let singularValues: number[] = [NaN, NaN, NaN]
+        if (!invalidValues) {
+          try {
+            const { q } = SVD(input)
+            singularValues = [...q].slice(0, 3)
+          } catch {
+            hasNaN = true
+          }
+        }
+        results.push({
+          step,
+          matrix: cloneMatrix(input),
+          singularValues,
+          hasNaN,
+        })
+        return hasNaN
+      }
+
+      let stop = recordSnapshot(current, 0)
+      for (let step = 1; step <= iterations; step += 1) {
+        if (stop) break
+        current = polynomialFn(current)
+        stop = recordSnapshot(current, step)
+      }
+
+      const firstNaN = results.find((snapshot) => snapshot.hasNaN)?.step ?? null
+      setSnapshots(results)
+      setSelectedStep(0)
+      setNanStep(firstNaN)
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   return (
@@ -255,6 +321,30 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-sm font-medium text-zinc-500">
+                    Defaults (comma-separated)
+                  </Label>
+                  <Input
+                    value={defaultText}
+                    onChange={(event) => setDefaultText(event.target.value)}
+                    placeholder="1, 0.5, 0.25"
+                    className="h-11 rounded-lg border-zinc-200 bg-white text-sm text-zinc-900"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  className="h-11 rounded-lg px-5 text-sm font-semibold"
+                  onClick={() => {
+                    const parsed = parseDefaultText(defaultText, coefficientCount)
+                    setCoefficients(parsed)
+                    setDefaultText(parsed.join(", "))
+                  }}
+                >
+                  Apply defaults
+                </Button>
+              </div>
               <div className={`grid gap-3 ${coefficientGridClass}`}>
                 {Array.from({ length: coefficientCount }).map((_, index) => (
                   <div key={index} className="space-y-1">
@@ -320,8 +410,62 @@ export default function Home() {
                 </button>
               </div>
             </div>
+            <div className="mt-6 flex justify-end">
+              <Button
+                type="button"
+                className="rounded-lg px-6 text-sm font-semibold"
+                onClick={handleRunIterations}
+                disabled={isRunning}
+              >
+                {isRunning ? "Running…" : "Start iteration"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
+
+        {snapshots.length > 0 && (
+          <Card className="border border-zinc-200/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-zinc-900 tracking-tight">
+                Iteration timeline
+              </CardTitle>
+              <CardDescription className="text-sm text-zinc-500">
+                Scrub through steps to inspect the captured matrices and singular values.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm text-zinc-500">
+                  <span>Step {selectedStep}</span>
+                  <span>of {snapshots.length - 1}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={snapshots.length - 1}
+                  value={selectedStep}
+                  onChange={(event) => setSelectedStep(Number(event.target.value))}
+                  className="w-full"
+                />
+              </div>
+              {nanStep !== null && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Numerical instability detected at step {nanStep}. Iteration stopped afterwards.
+                </div>
+              )}
+              {snapshots[selectedStep]?.hasNaN ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-900">
+                  Matrix entries became NaN at this step. No further data is available.
+                </div>
+              ) : (
+                <div className="grid gap-6 md:grid-cols-2">
+                  <MatrixReadout matrix={snapshots[selectedStep].matrix} />
+                  <SingularValueDisplay values={snapshots[selectedStep].singularValues} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </main>
     </div>
   )
@@ -340,4 +484,53 @@ function parseDefaultText(text: string, count: number) {
     entries.push(1)
   }
   return entries.map((value) => (Number.isFinite(value) ? value : 0))
+}
+
+function matrixHasNaN(matrix: Matrix) {
+  return matrix.some((row) => row.some((value) => !Number.isFinite(value)))
+}
+
+function MatrixReadout({ matrix }: { matrix: Matrix }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-zinc-500">Matrix</p>
+      <div className="space-y-2">
+        {matrix.map((row, rowIndex) => (
+          <div key={rowIndex} className="grid grid-cols-3 gap-2">
+            {row.map((value, columnIndex) => (
+              <div
+                key={`${rowIndex}-${columnIndex}`}
+                className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-center font-mono text-sm"
+              >
+                {formatNumber(value)}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SingularValueDisplay({ values }: { values: number[] }) {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm font-medium text-zinc-500">Singular values</p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {values.map((value, index) => (
+          <div
+            key={index}
+            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-center font-mono text-sm"
+          >
+            σ{index + 1}: {formatNumber(value)}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function formatNumber(value: number) {
+  if (!Number.isFinite(value)) return "NaN"
+  return Number(value).toFixed(4)
 }
