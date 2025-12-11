@@ -150,6 +150,12 @@ const DEGREE_DEFAULTS: Record<(typeof DEGREE_CHOICES)[number], number[]> = {
   5: [3.4445, -4.775, 2.0315],
 }
 
+
+interface TrajectoryPoint {
+  step: number
+  vector: [number, number, number]
+  scaled: [number, number, number]
+}
 interface Snapshot {
   step: number
   matrix: Matrix
@@ -165,7 +171,6 @@ export default function Home() {
   const coefficientCount = useMemo(() => (degree + 1) / 2, [degree])
   const coefficientGridClass = coefficientCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-3"
   const [coefficients, setCoefficients] = useState<number[]>(() => [...DEGREE_DEFAULTS[3]])
-  const [defaultText, setDefaultText] = useState(() => DEGREE_DEFAULTS[3].join(", "))
   const polynomialFn = useMemo(
     () => create_polynomial(degree, coefficients),
     [degree, coefficients]
@@ -189,7 +194,6 @@ export default function Home() {
     const nextCount = (nextDegree + 1) / 2
     const defaults = DEGREE_DEFAULTS[nextDegree] ?? Array(nextCount).fill(1)
     const trimmed = defaults.slice(0, nextCount)
-    setDefaultText(trimmed.join(", "))
     setCoefficients(trimmed)
   }
 
@@ -469,17 +473,6 @@ function cloneMatrix(matrix: Matrix): Matrix {
   return matrix.map((row) => [...row])
 }
 
-function parseDefaultText(text: string, count: number) {
-  const entries = text
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((_, index) => index < count)
-  while (entries.length < count) {
-    entries.push(1)
-  }
-  return entries.map((value) => (Number.isFinite(value) ? value : 0))
-}
-
 function matrixHasNaN(matrix: Matrix) {
   return matrix.some((row) => row.some((value) => !Number.isFinite(value)))
 }
@@ -596,8 +589,9 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
           />
         </Canvas>
       </div>
-      <div className="mt-4 flex gap-6 text-sm font-medium text-zinc-600">
+      <div className="mt-4 flex flex-wrap gap-6 text-sm font-medium text-zinc-600">
         <LegendPill color="#0ea5e9" label="Trajectory point" />
+        <LegendPill color="#f97316" label="Final step" />
         <LegendPill color="#22c55e" label="Target (1,1,1)" />
       </div>
       {expanded && (
