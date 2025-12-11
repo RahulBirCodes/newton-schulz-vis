@@ -1,9 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { SVD } from "svd-js"
 import { Canvas } from "@react-three/fiber"
 import { OrbitControls, Line } from "@react-three/drei"
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -554,7 +555,11 @@ function formatNumber(value: number) {
 }
 
 function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
-  const points = useMemo(() => {
+  const [expanded, setExpanded] = useState(false)
+  const primaryControlsRef = useRef<OrbitControlsImpl | null>(null)
+  const modalControlsRef = useRef<OrbitControlsImpl | null>(null)
+
+  const filteredPoints = useMemo(() => {
     return snapshots
       .filter((snapshot) => snapshot.singularValues.every((value) => Number.isFinite(value)))
       .map((snapshot) => ({
@@ -563,7 +568,27 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
       }))
   }, [snapshots])
 
-  if (points.length === 0) {
+  const { scaledPoints, targetScaled } = useMemo(() => {
+    if (filteredPoints.length === 0) {
+      return {
+        scaledPoints: [] as TrajectoryPoint[],
+        targetScaled: [0, 0, 0] as [number, number, number],
+      }
+    }
+    const maxComponent = Math.max(
+      1,
+      ...filteredPoints.flatMap((point) => point.vector.map((value) => Math.abs(value)))
+    )
+    const derivedScale = 1.5 / maxComponent
+    const scaled = filteredPoints.map((point) => ({
+      ...point,
+      scaled: point.vector.map((value) => value * derivedScale) as [number, number, number],
+    }))
+    const target = [1, 1, 1].map((value) => value * derivedScale) as [number, number, number]
+    return { scaledPoints: scaled, targetScaled: target }
+  }, [filteredPoints])
+
+  if (scaledPoints.length === 0) {
     return (
       <p className="text-sm text-zinc-500">
         Not enough valid singular values to display a trajectory.
@@ -571,47 +596,109 @@ function SingularValuePath3D({ snapshots }: { snapshots: Snapshot[] }) {
     )
   }
 
-  const maxComponent = Math.max(
-    1,
-    ...points.flatMap((point) => point.vector.map((value) => Math.abs(value)))
-  )
-  const scale = 1.5 / maxComponent
-  const scaledPoints = points.map((point) => ({
-    ...point,
-    scaled: point.vector.map((value) => value * scale) as [number, number, number],
-  }))
-  const targetScaled = [1, 1, 1].map((value) => value * scale) as [number, number, number]
+  const cameraPosition: [number, number, number] = [2.2, 2, 2.2]
+
+  const resetView = () => {
+    primaryControlsRef.current?.reset()
+    modalControlsRef.current?.reset()
+  }
 
   return (
-    <div className="h-[360px] overflow-hidden rounded-xl border border-zinc-200 bg-zinc-50">
-      <Canvas camera={{ position: [3, 3, 3], fov: 45 }}>
-        <color attach="background" args={["#f8fafc"]} />
-        <ambientLight intensity={0.8} />
-        <directionalLight position={[4, 5, 3]} intensity={0.6} />
-        <gridHelper args={[10, 20, "#cbd5f5", "#e5e7eb"]} position={[0, -0.01, 0]} />
-        <Line
-          points={scaledPoints.map((point) => point.scaled)}
-          color="#2563eb"
-          lineWidth={2}
-        />
-        {scaledPoints.map((point) => (
-          <mesh key={point.step} position={point.scaled}>
-            <sphereGeometry
-              args={[point.step === scaledPoints.length - 1 ? 0.07 : 0.05, 24, 24]}
-            />
-            <meshStandardMaterial
-              color={point.step === scaledPoints.length - 1 ? "#f97316" : "#0ea5e9"}
-              emissive={point.step === scaledPoints.length - 1 ? "#f97316" : "#0ea5e9"}
-              emissiveIntensity={0.4}
-            />
-          </mesh>
-        ))}
-        <mesh position={targetScaled}>
-          <sphereGeometry args={[0.08, 24, 24]} />
-          <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.6} />
+    <>
+      <div className="relative h-[600px] overflow-hidden rounded-3xl border border-zinc-200 bg-zinc-50">
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-500">
+          <button
+            type="button"
+            className="pointer-events-auto text-zinc-500 transition hover:text-zinc-900"
+            onClick={resetView}
+          >
+            Reset view
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto text-zinc-500 transition hover:text-zinc-900"
+            onClick={() => setExpanded(true)}
+          >
+            Expand
+          </button>
+        </div>
+        <Canvas camera={{ position: cameraPosition, fov: 40 }}>
+          <SingularValueScene
+            controlsRef={primaryControlsRef}
+            points={scaledPoints}
+            target={targetScaled}
+          />
+        </Canvas>
+      </div>
+      {expanded && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-10">
+          <Card className="w-full max-w-5xl border border-zinc-200">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-semibold text-zinc-900 tracking-tight">
+                  Singular value path
+                </CardTitle>
+                <CardDescription className="text-sm text-zinc-500">
+                  Expanded view
+                </CardDescription>
+              </div>
+              <div className="flex gap-3">
+                <Button variant="ghost" onClick={resetView}>
+                  Reset view
+                </Button>
+                <Button onClick={() => setExpanded(false)}>Close</Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[620px] rounded-3xl border border-zinc-200 bg-zinc-50">
+                <Canvas camera={{ position: cameraPosition, fov: 38 }}>
+                  <SingularValueScene
+                    controlsRef={modalControlsRef}
+                    points={scaledPoints}
+                    target={targetScaled}
+                  />
+                </Canvas>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
+  )
+}
+
+
+function SingularValueScene({
+  controlsRef,
+  points,
+  target,
+}: {
+  controlsRef: React.MutableRefObject<OrbitControlsImpl | null>
+  points: TrajectoryPoint[]
+  target: [number, number, number]
+}) {
+  return (
+    <>
+      <color attach="background" args={["#f8fafc"]} />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[4, 5, 3]} intensity={0.6} />
+      <gridHelper args={[10, 20, "#cbd5f5", "#e5e7eb"]} position={[0, -0.01, 0]} />
+      <Line points={points.map((point) => point.scaled)} color="#2563eb" lineWidth={6} />
+      {points.map((point) => (
+        <mesh key={point.step} position={point.scaled}>
+          <sphereGeometry args={[point.step === points.length - 1 ? 0.12 : 0.1, 32, 32]} />
+          <meshStandardMaterial
+            color={point.step === points.length - 1 ? "#f97316" : "#0ea5e9"}
+            emissive={point.step === points.length - 1 ? "#f97316" : "#0ea5e9"}
+            emissiveIntensity={0.5}
+          />
         </mesh>
-        <OrbitControls />
-      </Canvas>
-    </div>
+      ))}
+      <mesh position={target}>
+        <sphereGeometry args={[0.15, 32, 32]} />
+        <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.6} />
+      </mesh>
+      <OrbitControls ref={controlsRef} />
+    </>
   )
 }
